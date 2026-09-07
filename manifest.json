@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "LinkedIn Network Assistant",
+  "version": "1.0.0",
+  "description": "Safe, production-quality assistant for LinkedIn networking with batch limits, human-like delays, and automatic security stops.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://*.linkedin.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.linkedin.com/*"],
+      "js": [
+        "storage.js",
+        "linkedin/detector.js",
+        "linkedin/scanner.js",
+        "linkedin/dialog-handler.js",
+        "linkedin/scroll-manager.js",
+        "linkedin/safety-manager.js",
+        "linkedin/action-manager.js",
+        "ui/notification.js",
+        "ui/modal.js",
+        "ui/floating-panel.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

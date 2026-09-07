@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn Network Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+  <!-- FIRST RUN DISCLAIMER MODAL -->
+  <div id="first-run-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-icon">💼</div>
+      <h2>LinkedIn Network Assistant</h2>
+      <p>Use this extension to assist with repetitive LinkedIn networking tasks while keeping you in full control.</p>
+      <div class="disclaimer-box">
+        ⚠️ This extension operates purely within your browser DOM with human-like delays and batch caps. It never accesses account credentials or bypasses security checks.
+      </div>
+      <button id="btn-first-run-agree" class="btn btn-primary btn-full">I Understand</button>
+    </div>
+  </div>
+
+  <div class="popup-container">
+    <!-- HEADER -->
+    <header class="header">
+      <div class="header-title">
+        <svg class="linkedin-icon" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.25V10.9H6.46M7.86 6.78a1.64 1.64 0 1 0 0 3.28 1.64 1.64 0 0 0 0-3.28z"/>
+        </svg>
+        <span>LinkedIn Assistant</span>
+      </div>
+      <div class="status-badge" id="header-status-badge">
+        <span class="dot" id="header-status-dot">●</span>
+        <span id="header-status-text">Ready</span>
+      </div>
+    </header>
+
+    <!-- NAVIGATION TABS -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="tab-connect">Connect</button>
+      <button class="nav-tab" data-tab="tab-stats">Stats</button>
+      <button class="nav-tab" data-tab="tab-scanner">Scanner</button>
+      <button class="nav-tab" data-tab="tab-logs">Logs</button>
+      <button class="nav-tab" data-tab="tab-debug">Debug</button>
+    </nav>
+
+    <!-- TAB CONTENT: CONNECT ASSISTANT -->
+    <main class="tab-content" id="tab-connect">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Connect Assistant</span>
+          <label class="switch-container" title="Highlight DOM buttons without clicking">
+            <span class="switch-label">TEST MODE</span>
+            <input type="checkbox" id="chk-test-mode">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="info-row">
+          <span class="label">Current page:</span>
+          <span class="value text-truncate" id="connect-current-page">Detecting...</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Detected Connect buttons:</span>
+          <span class="value badge-count" id="connect-detected-count">0</span>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="input-batch-size">Batch size:</label>
+            <input type="number" id="input-batch-size" min="1" max="50" value="5">
+          </div>
+          <div class="form-group">
+            <label for="input-max-actions">Maximum actions:</label>
+            <input type="number" id="input-max-actions" min="1" max="100" value="20">
+          </div>
+        </div>
+
+        <div class="form-group margin-top-sm">
+          <label>Delay between actions:</label>
+          <div class="range-inputs">
+            <input type="number" id="input-min-delay" min="1" max="30" value="3">
+            <span>to</span>
+            <input type="number" id="input-max-delay" min="2" max="60" value="7">
+            <span>seconds</span>
+          </div>
+        </div>
+
+        <div class="checkbox-group margin-top-sm">
+          <label class="checkbox-label">
+            <input type="checkbox" id="chk-auto-scroll" checked>
+            <span>Automatically load more via scrolling</span>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="chk-confirm-batch" checked>
+            <span>Confirm before starting each batch</span>
+          </label>
+        </div>
+
+        <!-- ACKNOWLEDGMENT CHECKBOX -->
+        <div class="disclaimer-checkbox-card">
+          <label class="checkbox-label safety-ack">
+            <input type="checkbox" id="chk-safety-ack">
+            <span>I understand that LinkedIn may limit automated actions</span>
+          </label>
+        </div>
+
+        <!-- ACTION BUTTONS -->
+        <div class="button-row">
+          <button id="btn-start" class="btn btn-primary" disabled>Start</button>
+          <button id="btn-pause" class="btn btn-secondary" disabled>Pause</button>
+          <button id="btn-stop" class="btn btn-danger" disabled>Stop</button>
+        </div>
+
+        <!-- PROGRESS SECTION -->
+        <div class="progress-section">
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progress-fill" style="width: 0%;"></div>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-box">
+              <span class="stat-num" id="metric-processed">0</span>
+              <span class="stat-lbl">Processed</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-num text-success" id="metric-connected">0</span>
+              <span class="stat-lbl">Connected</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-num text-warning" id="metric-skipped">0</span>
+              <span class="stat-lbl">Skipped</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-num text-danger" id="metric-errors">0</span>
+              <span class="stat-lbl">Errors</span>
+            </div>
+          </div>
+          <div class="status-banner" id="status-banner-text">Ready to start</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB CONTENT: STATISTICS -->
+    <main class="tab-content hidden" id="tab-stats">
+      <div class="card">
+        <span class="card-title">Today's Session Statistics</span>
+        <div class="stats-list margin-top-sm">
+          <div class="stat-item"><span>Detected</span><strong id="stat-detected">0</strong></div>
+          <div class="stat-item"><span>Processed</span><strong id="stat-processed">0</strong></div>
+          <div class="stat-item"><span>Successful Connections</span><strong class="text-success" id="stat-successful">0</strong></div>
+          <div class="stat-item"><span>Skipped</span><strong class="text-warning" id="stat-skipped">0</strong></div>
+          <div class="stat-item"><span>Errors</span><strong class="text-danger" id="stat-errors">0</strong></div>
+          <div class="stat-item"><span>Stopped Events</span><strong id="stat-stopped">0</strong></div>
+          <div class="stat-item"><span>Session Duration</span><strong id="stat-duration">00:00:00</strong></div>
+          <div class="stat-item"><span>Current Page</span><strong class="text-truncate" id="stat-page">-</strong></div>
+          <div class="stat-item"><span>Last Action</span><strong class="text-truncate" id="stat-last-action">None</strong></div>
+        </div>
+        <button id="btn-reset-stats" class="btn btn-outline btn-full margin-top-md">Reset Session Stats</button>
+      </div>
+    </main>
+
+    <!-- TAB CONTENT: PAGE SCANNER -->
+    <main class="tab-content hidden" id="tab-scanner">
+      <div class="card">
+        <span class="card-title">Page Scanner</span>
+        <p class="card-sub">Inspect current page DOM structure for eligible profile cards.</p>
+        <div class="scan-summary margin-top-sm">
+          <div class="scan-card">
+            <span class="scan-value" id="scan-total-cards">0</span>
+            <span class="scan-label">Total Profile Cards</span>
+          </div>
+          <div class="scan-card">
+            <span class="scan-value text-success" id="scan-eligible-buttons">0</span>
+            <span class="scan-label">Connect Buttons</span>
+          </div>
+        </div>
+        <button id="btn-rescan-page" class="btn btn-secondary btn-full margin-top-md">🔄 Rescan Page DOM</button>
+      </div>
+    </main>
+
+    <!-- TAB CONTENT: ACTIVITY LOG -->
+    <main class="tab-content hidden" id="tab-logs">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Activity Log</span>
+          <button id="btn-clear-logs" class="btn-text">Clear Log</button>
+        </div>
+        <div class="log-container" id="log-list">
+          <div class="log-empty">No activity recorded yet.</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB CONTENT: DEBUG PANEL -->
+    <main class="tab-content hidden" id="tab-debug">
+      <div class="card">
+        <span class="card-title">Developer Debug Panel</span>
+        <div class="debug-list margin-top-sm">
+          <div class="debug-item"><span>Current URL:</span><code id="debug-url">-</code></div>
+          <div class="debug-item"><span>Profile Cards:</span><code id="debug-cards">0</code></div>
+          <div class="debug-item"><span>Connect Buttons:</span><code id="debug-buttons">0</code></div>
+          <div class="debug-item"><span>Processed Count:</span><code id="debug-processed">0</code></div>
+          <div class="debug-item"><span>State Machine:</span><code id="debug-state">IDLE</code></div>
+          <div class="debug-item"><span>Last Error:</span><code id="debug-error">None</code></div>
+        </div>
+        <div class="button-row margin-top-md">
+          <button id="btn-debug-refresh" class="btn btn-secondary btn-full">Refresh DOM Scan</button>
+          <a href="options.html" target="_blank" class="btn btn-outline btn-full text-center">Settings</a>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
