@@ -21,6 +21,7 @@ window.LinkedInAssistant.ActionManager = (function () {
   };
 
   let currentState = STATES.IDLE;
+  let currentMode = 'CONNECT'; // 'CONNECT' or 'LIKE'
   let currentBatch = [];
   let totalProcessedInRun = 0;
   let totalConnectedInRun = 0;
@@ -32,6 +33,10 @@ window.LinkedInAssistant.ActionManager = (function () {
 
   function getState() {
     return currentState;
+  }
+
+  function getMode() {
+    return currentMode;
   }
 
   function getStatusMessage() {
@@ -109,10 +114,16 @@ window.LinkedInAssistant.ActionManager = (function () {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
+  function getTargetButtons(includeProcessed = false) {
+    const Detector = window.LinkedInAssistant.Detector;
+    return currentMode === 'LIKE' ? Detector.findLikeButtons(includeProcessed) : Detector.findConnectButtons(includeProcessed);
+  }
+
   /**
    * Start Automation Task
+   * @param {'CONNECT' | 'LIKE'} mode
    */
-  async function startAutomation() {
+  async function startAutomation(mode = 'CONNECT') {
     const Storage = window.LinkedInAssistant.Storage;
     const Detector = window.LinkedInAssistant.Detector;
     const SafetyManager = window.LinkedInAssistant.SafetyManager;
@@ -120,6 +131,8 @@ window.LinkedInAssistant.ActionManager = (function () {
     if (currentState === STATES.PROCESSING || currentState === STATES.WAITING_CONFIRMATION) {
       return { success: false, message: 'Automation is already running.' };
     }
+
+    currentMode = mode || 'CONNECT';
 
     // Safety check first
     const safety = SafetyManager.checkSafety();
@@ -144,23 +157,24 @@ window.LinkedInAssistant.ActionManager = (function () {
     // Reset processed tracking for a fresh run
     Detector.resetProcessedSet();
 
-    setState(STATES.SCANNING, 'Scanning page for Connect buttons...');
-    await Storage.addLog('Started automation scan', 'INFO');
+    const targetLabel = currentMode === 'LIKE' ? 'feed Like buttons' : 'Connect buttons';
+    setState(STATES.SCANNING, `Scanning page for ${targetLabel}...`);
+    await Storage.addLog(`Started automation scan (${currentMode} mode)`, 'INFO');
 
-    const buttons = Detector.findConnectButtons();
+    const buttons = getTargetButtons(false);
     if (buttons.length === 0) {
       if (activeRunSettings.autoScroll) {
-        setState(STATES.SCROLLING, 'No visible Connect buttons found. Scrolling page...');
+        setState(STATES.SCROLLING, `No visible ${targetLabel} found. Scrolling page...`);
         const scrollRes = await window.LinkedInAssistant.ScrollManager.scrollAndLoadMore((msg) => setState(STATES.SCROLLING, msg));
         if (scrollRes.stoppedNoNew || scrollRes.totalButtons.length === 0) {
-          setState(STATES.COMPLETED, 'No Connect buttons found on page.');
-          await Storage.addLog('No Connect buttons found on page.', 'WARNING');
-          return { success: true, message: 'No Connect buttons found.' };
+          setState(STATES.COMPLETED, `No ${targetLabel} found on page.`);
+          await Storage.addLog(`No ${targetLabel} found on page.`, 'WARNING');
+          return { success: true, message: `No ${targetLabel} found.` };
         }
       } else {
-        setState(STATES.COMPLETED, 'No visible Connect buttons found.');
-        await Storage.addLog('No Connect buttons found on page.', 'WARNING');
-        return { success: true, message: 'No Connect buttons found.' };
+        setState(STATES.COMPLETED, `No visible ${targetLabel} found.`);
+        await Storage.addLog(`No ${targetLabel} found on page.`, 'WARNING');
+        return { success: true, message: `No ${targetLabel} found.` };
       }
     }
 
@@ -169,7 +183,7 @@ window.LinkedInAssistant.ActionManager = (function () {
   }
 
   /**
-   * Process next batch of connection requests
+   * Process next batch of connection or like requests
    */
   async function runNextBatch() {
     const Storage = window.LinkedInAssistant.Storage;
@@ -178,7 +192,7 @@ window.LinkedInAssistant.ActionManager = (function () {
     const DialogHandler = window.LinkedInAssistant.DialogHandler;
 
     try {
-      const allButtons = Detector.findConnectButtons();
+      const allButtons = getTargetButtons(false);
       const remainingAllowed = activeRunSettings.maxActions - totalProcessedInRun;
 
       if (remainingAllowed <= 0) {
@@ -188,22 +202,35 @@ window.LinkedInAssistant.ActionManager = (function () {
       }
 
       const batchCount = Math.min(activeRunSettings.batchSize, remainingAllowed, allButtons.length);
+      const targetLabel = currentMode === 'LIKE' ? 'feed Like buttons' : 'Connect buttons';
 
       if (batchCount <= 0) {
         if (activeRunSettings.autoScroll) {
-          setState(STATES.SCROLLING, 'Batch finished. Scrolling for more profiles...');
-          const scrollRes = await window.LinkedInAssistant.ScrollManager.scrollAndLoadMore((msg) => setState(STATES.SCROLLING, msg));
-          if (scrollRes.stoppedNoNew) {
-            setState(STATES.COMPLETED, 'No additional Connect buttons were found.');
-            await Storage.addLog('No additional Connect buttons found after scrolling.', 'INFO');
+          let scrollRetries = 0;
+          let scrollRes = null;
+          const maxRetries = currentMode === 'LIKE' ? 10 : 3;
+
+          while (scrollRetries < maxRetries) {
+            scrollRetries++;
+            setState(STATES.SCROLLING, `Scrolling feed for new ${targetLabel} (Attempt ${scrollRetries}/${maxRetries})...`);
+            scrollRes = await window.LinkedInAssistant.ScrollManager.scrollAndLoadMore((msg) => setState(STATES.SCROLLING, msg));
+            if (!scrollRes.stoppedNoNew && scrollRes.totalButtons.length > 0) {
+              break;
+            }
+            await safeWait(1.5);
+          }
+
+          if (!scrollRes || scrollRes.stoppedNoNew || scrollRes.totalButtons.length === 0) {
+            setState(STATES.COMPLETED, `No additional ${targetLabel} were found.`);
+            await Storage.addLog(`No additional ${targetLabel} found after scrolling.`, 'INFO');
             return;
           } else {
             runNextBatch();
             return;
           }
         } else {
-          setState(STATES.COMPLETED, 'Completed processing available Connect buttons.');
-          await Storage.addLog('Completed processing available buttons.', 'INFO');
+          setState(STATES.COMPLETED, `Completed processing available ${targetLabel}.`);
+          await Storage.addLog(`Completed processing available ${targetLabel}.`, 'INFO');
           return;
         }
       }
@@ -212,7 +239,8 @@ window.LinkedInAssistant.ActionManager = (function () {
 
       // Batch confirmation check if enabled
       if (activeRunSettings.confirmBeforeBatch && totalProcessedInRun === 0) {
-        setState(STATES.WAITING_CONFIRMATION, `Ready to process ${currentBatch.length} connection requests.`);
+        const confirmMsg = currentMode === 'LIKE' ? `Ready to like ${currentBatch.length} feed posts.` : `Ready to process ${currentBatch.length} connection requests.`;
+        setState(STATES.WAITING_CONFIRMATION, confirmMsg);
         if (window.LinkedInAssistant.Modal) {
           window.LinkedInAssistant.Modal.showBatchConfirmModal(currentBatch.length, () => {
             executeBatchProcessing();
@@ -239,7 +267,7 @@ window.LinkedInAssistant.ActionManager = (function () {
   }
 
   /**
-   * Execute connection clicks for current batch
+   * Execute clicks for current batch
    */
   async function executeBatchProcessing() {
     const Storage = window.LinkedInAssistant.Storage;
@@ -276,16 +304,18 @@ window.LinkedInAssistant.ActionManager = (function () {
 
       // 4. Perform click or Test Mode highlight
       if (activeRunSettings.testMode) {
-        Detector.highlightButtons([button], true);
+        const labelPrefix = currentMode === 'LIKE' ? 'Like Button' : 'Connect Button';
+        Detector.highlightButtons([button], true, labelPrefix);
         Detector.markProcessed(button);
         totalConnectedInRun++;
         totalProcessedInRun++;
-        await Storage.addLog(`[TEST MODE] Highlighted Connect button #${totalProcessedInRun}`, 'SUCCESS');
+        const logMsg = currentMode === 'LIKE' ? `[TEST MODE] Highlighted Like button #${totalProcessedInRun}` : `[TEST MODE] Highlighted Connect button #${totalProcessedInRun}`;
+        await Storage.addLog(logMsg, 'SUCCESS');
         await Storage.updateStats({
           processed: totalProcessedInRun,
           connected: totalConnectedInRun,
           lastActionTime: Date.now(),
-          lastActionText: `[TEST MODE] Highlighted button #${totalProcessedInRun}`
+          lastActionText: logMsg
         });
       } else {
         try {
@@ -293,25 +323,27 @@ window.LinkedInAssistant.ActionManager = (function () {
           Detector.markProcessed(button);
           await safeWait(1.5); // wait for UI response
 
-          // 5. Handle post-click confirmation dialog
-          const dialogResult = await DialogHandler.handleDialog(activeRunSettings.autoConfirmDialogs);
-          if (dialogResult.requiresUserConfirmation) {
-            setState(STATES.WAITING_DIALOG, 'LinkedIn is asking for confirmation.');
-            await Storage.addLog('LinkedIn is asking for connection confirmation.', 'WARNING');
+          if (currentMode === 'CONNECT') {
+            // 5. Handle post-click confirmation dialog
+            const dialogResult = await DialogHandler.handleDialog(activeRunSettings.autoConfirmDialogs);
+            if (dialogResult.requiresUserConfirmation) {
+              setState(STATES.WAITING_DIALOG, 'LinkedIn is asking for confirmation.');
+              await Storage.addLog('LinkedIn is asking for connection confirmation.', 'WARNING');
 
-            if (window.LinkedInAssistant.Modal) {
-              window.LinkedInAssistant.Modal.showDialogPromptModal(
-                async () => { // Continue
-                  const sendBtn = DialogHandler.findSendWithoutNoteButton(dialogResult.dialogElement);
-                  if (sendBtn) sendBtn.click();
-                  setState(STATES.PROCESSING, 'Resuming batch...');
-                  await executePostClickSuccess(totalProcessedInRun + 1);
-                },
-                () => { // Stop
-                  stopAutomation('Stopped at confirmation prompt.');
-                }
-              );
-              return;
+              if (window.LinkedInAssistant.Modal) {
+                window.LinkedInAssistant.Modal.showDialogPromptModal(
+                  async () => { // Continue
+                    const sendBtn = DialogHandler.findSendWithoutNoteButton(dialogResult.dialogElement);
+                    if (sendBtn) sendBtn.click();
+                    setState(STATES.PROCESSING, 'Resuming batch...');
+                    await executePostClickSuccess(totalProcessedInRun + 1);
+                  },
+                  () => { // Stop
+                    stopAutomation('Stopped at confirmation prompt.');
+                  }
+                );
+                return;
+              }
             }
           }
 
@@ -319,7 +351,8 @@ window.LinkedInAssistant.ActionManager = (function () {
         } catch (err) {
           console.error('Click error:', err);
           totalErrorsInRun++;
-          await Storage.addLog(`Failed to click Connect button: ${err.message}`, 'ERROR');
+          const targetAction = currentMode === 'LIKE' ? 'Like button' : 'Connect button';
+          await Storage.addLog(`Failed to click ${targetAction}: ${err.message}`, 'ERROR');
         }
       }
 
@@ -328,15 +361,16 @@ window.LinkedInAssistant.ActionManager = (function () {
 
     // Batch completed check
     if (currentState === STATES.PROCESSING) {
+      const targetLabel = currentMode === 'LIKE' ? 'posts' : 'profiles';
       if (totalProcessedInRun >= activeRunSettings.maxActions) {
         setState(STATES.COMPLETED, 'Maximum action limit reached.');
-        await Storage.addLog(`Finished run. Processed ${totalProcessedInRun} connections.`, 'SUCCESS');
+        await Storage.addLog(`Finished run. Processed ${totalProcessedInRun} ${targetLabel}.`, 'SUCCESS');
       } else if (activeRunSettings.autoScroll) {
-        setState(STATES.SCROLLING, 'Batch finished. Scrolling page for more profiles...');
+        setState(STATES.SCROLLING, `Batch finished. Scrolling page for more ${targetLabel}...`);
         const scrollRes = await window.LinkedInAssistant.ScrollManager.scrollAndLoadMore((msg) => setState(STATES.SCROLLING, msg));
         if (scrollRes.stoppedNoNew) {
-          setState(STATES.COMPLETED, 'No additional Connect buttons were found.');
-          await Storage.addLog('No additional Connect buttons found after scrolling.', 'INFO');
+          setState(STATES.COMPLETED, 'No additional buttons were found.');
+          await Storage.addLog('No additional buttons found after scrolling.', 'INFO');
         } else {
           runNextBatch();
         }
@@ -351,12 +385,13 @@ window.LinkedInAssistant.ActionManager = (function () {
     const Storage = window.LinkedInAssistant.Storage;
     totalConnectedInRun++;
     totalProcessedInRun = count;
-    await Storage.addLog(`Sent connection request #${totalProcessedInRun}`, 'SUCCESS');
+    const actionMsg = currentMode === 'LIKE' ? `Liked feed post #${totalProcessedInRun}` : `Sent connection request #${totalProcessedInRun}`;
+    await Storage.addLog(actionMsg, 'SUCCESS');
     await Storage.updateStats({
       processed: totalProcessedInRun,
       connected: totalConnectedInRun,
       lastActionTime: Date.now(),
-      lastActionText: `Connected #${totalProcessedInRun}`
+      lastActionText: actionMsg
     });
   }
 

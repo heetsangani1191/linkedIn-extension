@@ -167,9 +167,10 @@ window.LinkedInAssistant.FloatingPanel = (function () {
     const Storage = window.LinkedInAssistant.Storage;
 
     const state = ActionManager ? ActionManager.getState() : 'IDLE';
+    const mode = ActionManager && ActionManager.getMode ? ActionManager.getMode() : 'CONNECT';
     const statusMsg = ActionManager ? ActionManager.getStatusMessage() : 'Ready';
     const runStats = ActionManager ? ActionManager.getRunStats() : { processed: 0, connected: 0 };
-    const detectedButtons = Detector ? Detector.findConnectButtons(true).length : 0;
+    const detectedButtons = Detector ? (mode === 'LIKE' ? Detector.findLikeButtons(true).length : Detector.findConnectButtons(true).length) : 0;
     const settings = Storage ? await Storage.getSettings() : { maxActions: 20 };
 
     const statusDot = panelElement.querySelector('#lna-status-dot');
@@ -181,7 +182,13 @@ window.LinkedInAssistant.FloatingPanel = (function () {
 
     if (fpDetected) fpDetected.textContent = detectedButtons;
     if (fpProcessed) fpProcessed.textContent = `${runStats.processed}/${settings.maxActions}`;
-    if (fpConnected) fpConnected.textContent = runStats.connected;
+    if (fpConnected) {
+      fpConnected.textContent = runStats.connected;
+      const connectedLabelEl = fpConnected.parentElement ? fpConnected.parentElement.querySelector('span') : null;
+      if (connectedLabelEl) {
+        connectedLabelEl.textContent = mode === 'LIKE' ? 'Liked:' : 'Connected:';
+      }
+    }
 
     if (statusText) statusText.textContent = statusMsg.length > 20 ? statusMsg.substring(0, 20) + '...' : statusMsg;
 

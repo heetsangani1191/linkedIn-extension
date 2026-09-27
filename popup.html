@@ -45,11 +45,16 @@
       <button class="nav-tab" data-tab="tab-debug">Debug</button>
     </nav>
 
-    <!-- TAB CONTENT: CONNECT ASSISTANT -->
+    <!-- TAB CONTENT: CONNECT ASSISTANT / POST LIKE ASSISTANT -->
     <main class="tab-content" id="tab-connect">
       <div class="card">
+        <div class="tool-mode-bar">
+          <button class="tool-mode-btn active" id="btn-mode-connect">🤝 Connect Assistant</button>
+          <button class="tool-mode-btn" id="btn-mode-like">👍 Post Like Assistant</button>
+        </div>
+
         <div class="card-header">
-          <span class="card-title">Connect Assistant</span>
+          <span class="card-title" id="assistant-title-label">Connect Assistant</span>
           <label class="switch-container" title="Highlight DOM buttons without clicking">
             <span class="switch-label">TEST MODE</span>
             <input type="checkbox" id="chk-test-mode">
@@ -62,7 +67,7 @@
           <span class="value text-truncate" id="connect-current-page">Detecting...</span>
         </div>
         <div class="info-row">
-          <span class="label">Detected Connect buttons:</span>
+          <span class="label" id="detected-buttons-label">Detected Connect buttons:</span>
           <span class="value badge-count" id="connect-detected-count">0</span>
         </div>
 

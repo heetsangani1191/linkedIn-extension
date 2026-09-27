@@ -80,16 +80,19 @@ window.LinkedInAssistant.Detector = (function () {
   }
 
   /**
-   * Check if element is truly visible on page
+   * Check if element is usable on page DOM (not hidden via CSS display/visibility)
    */
   function isVisible(element) {
     if (!element) return false;
-    const style = window.getComputedStyle(element);
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+    try {
+      const style = window.getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+        return false;
+      }
+    } catch (e) {
       return false;
     }
-    const rect = element.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
+    return true;
   }
 
   /**
@@ -193,14 +196,90 @@ window.LinkedInAssistant.Detector = (function () {
   }
 
   /**
+   * Check if a button is an un-liked Like button on a feed post or comment
+   */
+  function isEligibleLikeButton(button) {
+    if (!button || !isVisible(button)) return false;
+
+    // Disabled check
+    if (button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
+
+    const ariaPressed = button.getAttribute('aria-pressed');
+    if (ariaPressed === 'true') return false; // Already liked
+
+    const text = (button.innerText || button.textContent || '').trim().toLowerCase();
+    const ariaLabel = (button.getAttribute('aria-label') || '').trim().toLowerCase();
+    const className = (button.className || '').toString().toLowerCase();
+
+    // Direct text / action type exclusion (must not be comment/repost/share/follow button)
+    if (text === 'comment' || text === 'repost' || text === 'share' || text === 'send' || text === 'follow' || text === '+ follow') {
+      return false;
+    }
+    if (ariaLabel.startsWith('comment') || ariaLabel.startsWith('repost') || ariaLabel.startsWith('share') || ariaLabel.startsWith('send') || ariaLabel.startsWith('follow')) {
+      return false;
+    }
+
+    // Already liked / reacted check
+    if (ariaLabel.includes('liked') || text === 'liked' || text === 'reacted') {
+      return false;
+    }
+    if (button.classList && (
+      button.classList.contains('react-button__trigger--active') ||
+      button.classList.contains('artdeco-button--active')
+    )) {
+      return false;
+    }
+
+    // 1. Check if button is explicitly a react button trigger or social action button
+    const isReactTrigger = className.includes('react-button__trigger') || 
+                           className.includes('feed-shared-social-action-bar__action-button') ||
+                           className.includes('social-actions-button');
+
+    const isLikeLabel = ariaLabel.includes('like') || ariaLabel.includes('react') || text === 'like' || text.includes('like');
+
+    if (isReactTrigger || isLikeLabel) {
+      return true;
+    }
+
+    // 2. Fallback: check if button is inside social action bar as first button
+    const parentBar = button.closest ? button.closest('.feed-shared-social-action-bar, .feed-shared-social-actions, [data-view-name*="social-actions"]') : null;
+    if (parentBar) {
+      const firstBtn = parentBar.querySelector('button, [role="button"]');
+      if (firstBtn === button) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Scan DOM for un-liked Like buttons on LinkedIn Feed posts
+   * @param {boolean} includeProcessed If true, returns all eligible like buttons including processed
+   */
+  function findLikeButtons(includeProcessed = false) {
+    const candidates = Array.from(document.querySelectorAll('button, [role="button"]'));
+    const validButtons = [];
+
+    for (const btn of candidates) {
+      if (!includeProcessed && isProcessed(btn)) continue;
+      if (isEligibleLikeButton(btn)) {
+        validButtons.push(btn);
+      }
+    }
+
+    return validButtons;
+  }
+
+  /**
    * Apply test mode highlight borders to detected buttons
    */
-  function highlightButtons(buttons, highlight = true) {
+  function highlightButtons(buttons, highlight = true, labelPrefix = 'Connect Button') {
     buttons.forEach((btn, index) => {
       if (highlight) {
         btn.style.outline = '3px solid #0A66C2';
         btn.style.outlineOffset = '2px';
-        btn.setAttribute('data-lna-highlight', `Connect Button #${index + 1}`);
+        btn.setAttribute('data-lna-highlight', `${labelPrefix} #${index + 1}`);
       } else {
         btn.style.outline = '';
         btn.style.outlineOffset = '';
@@ -211,7 +290,9 @@ window.LinkedInAssistant.Detector = (function () {
 
   return {
     findConnectButtons,
+    findLikeButtons,
     isEligibleConnectButton,
+    isEligibleLikeButton,
     isProcessed,
     markProcessed,
     resetProcessedSet,

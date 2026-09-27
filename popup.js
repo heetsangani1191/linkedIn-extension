@@ -202,10 +202,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     chk.addEventListener('change', () => saveCurrentFormSettings());
   });
 
+  // Tool Mode Management
+  const btnModeConnect = document.getElementById('btn-mode-connect');
+  const btnModeLike = document.getElementById('btn-mode-like');
+  const assistantTitleLabel = document.getElementById('assistant-title-label');
+  const detectedButtonsLabel = document.getElementById('detected-buttons-label');
+  const connectedStatLbl = metricConnected.nextElementSibling;
+
+  let activeToolMode = 'CONNECT';
+
+  if (btnModeConnect && btnModeLike) {
+    btnModeConnect.addEventListener('click', () => {
+      setToolMode('CONNECT');
+    });
+
+    btnModeLike.addEventListener('click', () => {
+      setToolMode('LIKE');
+    });
+  }
+
+  function setToolMode(mode) {
+    activeToolMode = mode;
+    if (mode === 'LIKE') {
+      btnModeConnect.classList.remove('active');
+      btnModeLike.classList.add('active');
+      assistantTitleLabel.textContent = 'Post Like Assistant';
+      detectedButtonsLabel.textContent = 'Detected Like buttons:';
+      if (connectedStatLbl) connectedStatLbl.textContent = 'Liked';
+    } else {
+      btnModeLike.classList.remove('active');
+      btnModeConnect.classList.add('active');
+      assistantTitleLabel.textContent = 'Connect Assistant';
+      detectedButtonsLabel.textContent = 'Detected Connect buttons:';
+      if (connectedStatLbl) connectedStatLbl.textContent = 'Connected';
+    }
+    triggerPageScan();
+  }
+
   // ACTION BUTTON HANDLERS
   btnStart.addEventListener('click', async () => {
     saveCurrentFormSettings();
-    const res = await sendMessageToTab('START_ASSISTANT');
+    const res = await sendMessageToTab('START_ASSISTANT', { mode: activeToolMode });
     if (!res.success) {
       statusBannerText.textContent = res.message || 'Could not start assistant.';
     } else {
@@ -260,7 +297,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnDebugRefresh.addEventListener('click', () => triggerPageScan());
 
   async function triggerPageScan() {
-    const res = await sendMessageToTab('SCAN_PAGE');
+    const res = await sendMessageToTab('SCAN_PAGE', { mode: activeToolMode });
     if (res && res.success) {
       scanTotalCards.textContent = res.totalCards || 0;
       scanEligibleButtons.textContent = res.detectedCount || 0;
@@ -340,7 +377,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tab = await getActiveLinkedInTab();
     const currentUrl = (tab && (tab.url || tab.pendingUrl)) || '';
 
-    const statusRes = await sendMessageToTab('GET_STATUS');
+    const statusRes = await sendMessageToTab('GET_STATUS', { mode: activeToolMode });
 
     if (statusRes && statusRes.success) {
       const { state, statusMessage, detectedCount, runStats, settings } = statusRes;

@@ -31,24 +31,27 @@
 
     switch (request.action) {
       case 'SCAN_PAGE': {
+        const mode = request.mode || (ActionManager.getMode ? ActionManager.getMode() : 'CONNECT');
         const scanResult = Scanner.scanPage();
         const settings = await Storage.getSettings();
-        const allButtons = Detector.findConnectButtons(true);
+        const allButtons = mode === 'LIKE' ? Detector.findLikeButtons(true) : Detector.findConnectButtons(true);
         if (settings.testMode) {
-          Detector.highlightButtons(allButtons, true);
+          Detector.highlightButtons(allButtons, true, mode === 'LIKE' ? 'Like Button' : 'Connect Button');
         }
         return {
           success: true,
           detectedCount: allButtons.length,
           totalCards: scanResult.totalCards,
           url: scanResult.url,
+          mode,
           state: ActionManager.getState()
         };
       }
 
       case 'START_ASSISTANT': {
         FloatingPanel.initPanel();
-        const startRes = await ActionManager.startAutomation();
+        const mode = request.mode || 'CONNECT';
+        const startRes = await ActionManager.startAutomation(mode);
         return startRes;
       }
 
@@ -68,15 +71,17 @@
       }
 
       case 'GET_STATUS': {
+        const mode = request.mode || (ActionManager.getMode ? ActionManager.getMode() : 'CONNECT');
         const settings = await Storage.getSettings();
         const stats = await Storage.getStats();
-        const allButtons = Detector.findConnectButtons(true);
+        const allButtons = mode === 'LIKE' ? Detector.findLikeButtons(true) : Detector.findConnectButtons(true);
         const safety = SafetyManager.checkSafety();
         const runStats = ActionManager.getRunStats();
 
         return {
           success: true,
           state: ActionManager.getState(),
+          mode: ActionManager.getMode ? ActionManager.getMode() : mode,
           statusMessage: ActionManager.getStatusMessage(),
           detectedCount: allButtons.length,
           runStats,
